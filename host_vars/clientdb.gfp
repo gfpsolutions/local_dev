@@ -1,0 +1,5 @@
+odoo_db: clientdb
+odoo_version: 18.0
+custom_module: base_client
+addons_path: /home/odoo/src/enterprise,/home/odoo/src/odoo/addons,/home/odoo/src/custom_modules/client
+add_python_lib: untangle

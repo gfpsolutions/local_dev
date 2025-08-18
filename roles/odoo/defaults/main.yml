@@ -1,0 +1,15 @@
+odoo_postgres: postgres.gfp
+odoo_postgres_ip: 192.168.64.2
+odoo_postgres_user: odoo
+odoo_http_port: 8069
+odoo_longpolling_port: 8072
+odoo_workers: "{{ (ansible_processor_vcpus * 2)|int }}"
+
+# Odoo's memory limits use virtual memory, not resident memory making
+# this a bit trickier. For now, just overcommit (full memory for each
+# worker), in case of issues this can be tuned later.
+#
+# Note: ensure that workers at least have 1GB of memory, otherwise
+# less compilation will crash.
+odoo_soft_memory_in_bytes: "{{ (ansible_memtotal_mb * 1024 * 1024)|int }}"
+odoo_hard_memory_in_bytes: "{{ (odoo_soft_memory_in_bytes|int * 1.2)|int }}"

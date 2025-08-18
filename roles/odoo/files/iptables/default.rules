@@ -1,0 +1,15 @@
+*filter
+:INPUT DROP
+:FORWARD ACCEPT
+:OUTPUT ACCEPT
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+
+# SSH, HTTP, HTTPS
+-A INPUT -p tcp -m multiport --destination-ports 22,80,443,5432 -j ACCEPT
+
+# Monitoring
+-A INPUT -s 172.31.4.132,54.183.10.128 -p tcp -m multiport --destination-ports 9100:9103 -j ACCEPT
+
+COMMIT

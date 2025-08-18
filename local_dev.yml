@@ -1,0 +1,6 @@
+- name: setup local dev odoo VMs
+  hosts: odoo
+  force_handlers: yes
+  roles:
+    - odoo
+  tags: odoo-play

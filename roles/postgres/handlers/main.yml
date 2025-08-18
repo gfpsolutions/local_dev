@@ -1,0 +1,15 @@
+- name: reload systemd
+  become: yes
+  command: systemctl daemon-reload
+
+- name: restart sshd
+  become: yes
+  service: name=ssh state=restarted
+
+- name: restart iptables
+  become: yes
+  service: name=iptables state=restarted
+
+- name: restart ip6tables
+  become: yes
+  service: name=ip6tables state=restarted

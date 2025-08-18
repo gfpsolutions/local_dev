@@ -1,0 +1,6 @@
+- name: setup postgres server
+  hosts: postgres
+  force_handlers: yes
+  roles:
+    - postgres
+  tags: postgres-play

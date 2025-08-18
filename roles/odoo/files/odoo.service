@@ -1,0 +1,14 @@
+[Unit]
+Description=Odoo Open Source ERP and CRM
+After=network.target
+
+[Service]
+Type=simple
+User=odoo
+Group=odoo
+ExecStart=/home/odoo/python/bin/python3 /home/odoo/src/odoo/odoo-bin --config /home/odoo/.odoorc
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,14 @@
+[Unit]
+Description=Packet Filtering Framework
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip6tables-restore /root/drop_all.rules
+ExecReload=/sbin/ip6tables-restore /root/drop_all.rules
+ExecStop=/sbin/ip6tables-restore /root/allow_all.rules
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+# If key is needed to access the instance: ansible_ssh_private_key_file=~/gfp_local.pem
+
+[odoo]
+clientdb.gfp
+clientdb2.gfp
+
+[postgres]
+postgres.gfp

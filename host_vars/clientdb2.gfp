@@ -1,0 +1,4 @@
+odoo_db: clientdb2
+odoo_version: 16.0
+custom_module: base_client2
+addons_path: /home/odoo/src/enterprise,/home/odoo/src/odoo/addons,/home/odoo/src/custom_modules/client2

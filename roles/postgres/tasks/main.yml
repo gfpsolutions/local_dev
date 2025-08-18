@@ -1,0 +1,99 @@
+- name: Update package cache
+  become: yes
+  apt:
+    update_cache: yes
+  changed_when: False
+
+- name: Install packages
+  become: yes
+  apt:
+    name:
+      - vim
+      - tree
+      - htop
+      - postgresql
+      - software-properties-common
+  tags: apt
+
+- name: Add the odoo user
+  become: yes
+  user:
+    name: odoo
+    shell: /bin/bash
+
+- name: Copy authorized keys for ubuntu user
+  copy:
+    src: authorized_keys_gfp
+    dest: /home/ubuntu/.ssh/
+    mode: 0600
+  notify: restart sshd
+  tags: ssh
+
+- name: Copy authorized keys for odoo user
+  become: yes
+  become_user: odoo
+  copy:
+    src: authorized_keys_gfp
+    dest: /home/odoo/.ssh/
+    mode: 0600
+  notify: restart sshd
+  tags: ssh
+
+- name: Set up sshd_config
+  become: yes
+  copy:
+    src: sshd_config
+    dest: /etc/ssh/
+  notify: restart sshd
+  tags: ssh
+
+- name: Copy SSH config for odoo user
+  become: yes
+  become_user: odoo
+  copy: src=ssh_config dest=/home/odoo/.ssh/config
+  tags: ssh
+
+- name: Set up postgres
+  become: yes
+  become_user: postgres
+  shell: |
+    if ! psql -c 'SELECT usename FROM pg_user;' | grep -o odoo > /dev/null ; then
+        createuser -d odoo
+        echo 'changed'
+    fi
+  register: postgres_setup_output
+  changed_when: 'postgres_setup_output.stdout == "changed"'
+  tags: postgres
+
+- name: Copy iptables rules
+  become: yes
+  copy: src=iptables/{{ item }} dest=/root/
+  with_items:
+    - default.rules
+    - allow_all.rules
+    - drop_all.rules
+  notify:
+    - restart iptables
+    - restart ip6tables
+  tags: iptables
+
+- name: Copy iptables service file
+  become: yes
+  copy: src=iptables/iptables.service dest=/etc/systemd/system/
+  notify:
+    - reload systemd
+    - restart iptables
+  tags: iptables
+
+- name: Copy ip6tables service file
+  become: yes
+  copy: src=iptables/ip6tables.service dest=/etc/systemd/system/
+  notify:
+    - reload systemd
+    - restart ip6tables
+  tags: iptables
+
+- name: Remove dependencies that are no longer required
+  become: yes
+  apt:
+    autoremove: yes

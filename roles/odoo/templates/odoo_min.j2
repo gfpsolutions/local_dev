@@ -1,0 +1,9 @@
+[options]
+db_host = {{ odoo_postgres }}
+db_port = 5432
+db_user = {{ odoo_postgres_user }}
+db_name = {{ odoo_db }}
+without_demo = all
+list_db = False
+admin_passwd = {{ 2 | pow(32) | int | random | to_uuid }}
+proxy_mode=True

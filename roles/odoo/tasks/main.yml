@@ -1,0 +1,392 @@
+- name: check if odoo_user is default
+  fail:
+    msg: "the odoo_user variable should only be set for legacy hosts"
+  when: odoo_user != 'odoo'
+
+- name: Update package cache
+  become: yes
+  apt:
+    update_cache: yes
+  changed_when: False
+
+- name: Install packages
+  become: yes
+  apt:
+    name:
+      - vim
+      - acl # needed for ubuntu 20.04+
+      - tree
+      - ncdu
+      - htop
+      - postgresql # postgres is enabled automatically by apt
+      - python3-full
+      - python3-dev
+      - libssl-dev
+      - libldap2-dev # needed for requirements.txt: pyldap
+      - libpq-dev # needed for requirements.txt: psycopg2 ubuntu 20.04
+      - libjpeg-dev # needed for requirements.txt: Pillow ubuntu 20.04
+      - zlib1g-dev # needed for requirements.txt: Pillow ubuntu 20.04
+      - libsasl2-dev # needed for requirements.txt: pyldap
+      - libxml2-dev # needed in Ubuntu 18.04 for requirements.txt: lxml
+      - libxslt1-dev # needed in Ubuntu 18.04 for requirements.txt: lxml
+      - npm
+      - nginx
+      - software-properties-common # needed for certbot
+      - build-essential
+      - libffi-dev
+      - gcc
+  tags: apt
+
+- name: Start NGINX after reboot
+  become: yes
+  service: name=nginx enabled=yes
+  tags: nginx
+
+- name: Copy NGINX config
+  become: yes
+  copy:
+    src: nginx.conf
+    dest: /etc/nginx/nginx.conf
+  notify: restart nginx
+  tags: nginx
+
+- name: Copy odoo NGINX sites config
+  become: yes
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/sites-available/odoo.conf
+    force: no # don't overwrite if exists, certbot will have modified it
+  notify: restart nginx
+  tags: nginx
+
+- name: Disable default NGINX config
+  become: yes
+  file:
+    dest: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: restart nginx
+  tags: nginx
+
+- name: Enable odoo NGINX config
+  become: yes
+  file:
+    src: /etc/nginx/sites-available/odoo.conf
+    dest: /etc/nginx/sites-enabled/odoo.conf
+    state: link
+    force: no # don't overwrite with defaults, it might be manually tuned
+  notify: restart nginx
+  tags: nginx
+
+- name: Add the odoo user
+  become: yes
+  user:
+    name: odoo
+    shell: /bin/bash
+
+- name: Create odoo user directory structure
+  become: yes
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: odoo
+    group: odoo
+  with_items:
+    - /home/odoo/src
+    - /home/odoo/logs
+    - /home/odoo/downloads
+
+- name: Copy authorized keys for ubuntu user
+  copy:
+    src: authorized_keys_gfp
+    dest: /home/ubuntu/.ssh/
+    mode: 0600
+  notify: restart sshd
+  tags: ssh
+
+- name: Copy authorized keys for odoo user
+  become: yes
+  become_user: odoo
+  copy:
+    src: authorized_keys_gfp
+    dest: /home/odoo/.ssh/
+    mode: 0600
+  notify: restart sshd
+  tags: ssh
+
+- name: Set up sshd_config
+  become: yes
+  copy:
+    src: sshd_config
+    dest: /etc/ssh/
+  notify: restart sshd
+  tags: ssh
+
+- name: Copy GFP Github key
+  become: yes
+  become_user: odoo
+  copy:
+    src: "{{ item }}"
+    dest: /home/odoo/.ssh/
+    mode: 0600
+  with_items:
+    - gfp_github
+    - gfp_github.pub
+  tags: ssh
+
+- name: Copy SSH config for odoo user
+  become: yes
+  become_user: odoo
+  copy: src=ssh_config dest=/home/odoo/.ssh/config
+  tags: ssh
+
+- name: Clone odoo community
+  become: yes
+  become_user: odoo
+  git:
+    repo: https://github.com/odoo/odoo.git
+    dest: /home/odoo/src/odoo
+    version: "{{ odoo_version }}"
+    update: no
+    depth: 1 # mainly to speed up testing, could be removed later if necessary
+  tags: odoo
+
+- name: Clone odoo enterprise
+  become: yes
+  become_user: odoo
+  git:
+    repo: git@github.com:odoo/enterprise.git
+    dest: /home/odoo/src/enterprise
+    version: "{{ odoo_version }}"
+    key_file: /home/odoo/.ssh/gfp_github
+    accept_hostkey: yes
+    update: no
+    depth: 1 # mainly to speed up testing, could be removed later if necessary
+  tags: odoo
+
+- name: Create Python virtual environment in /home/odoo
+  command: python3 -m venv /home/odoo/python
+  args:
+    creates: /home/odoo/python/bin/activate
+  become: yes
+  become_user: odoo
+
+- name: Install packages from requirements.txt in virtual environment
+  pip:
+    requirements: /home/odoo/src/odoo/requirements.txt
+    virtualenv: /home/odoo/python
+    virtualenv_command: python3 -m venv
+  become: yes
+  become_user: odoo
+
+- name: Install additional Python libraries in virtual environment
+  ansible.builtin.pip:
+    name: "{{ add_python_lib }}"
+    virtualenv: /home/odoo/python
+    virtualenv_command: python3 -m venv
+  become: yes
+  become_user: odoo
+  when: add_python_lib is defined and add_python_lib | length > 0
+  tags: pip
+
+- name: Install wkhtmltopdf from apt when on an ARM based system
+  become: yes
+  apt:
+    name:
+      - wkhtmltopdf
+  when: ansible_architecture  == 'aarch64'
+  tags: wkhtmltox
+
+- name: Download wkhtmltopdf for Ubuntu 24.04
+  become: yes
+  become_user: odoo
+  get_url:
+    url: "https://nightly.odoo.com/deb/jammy/wkhtmltox_0.12.5-2.jammy_amd64.deb"
+    dest: /home/odoo/downloads/wkhtmltox-0.12.1_linux-trusty-amd64.deb
+  when: ansible_architecture  != 'aarch64' and ansible_distribution_version == '24.04'
+  tags: wkhtmltox
+
+- name: Download wkhtmltopdf for Ubuntu 20.04
+  become: yes
+  become_user: odoo
+  get_url:
+    url: "http://nightly.odoo.com/deb/focal/wkhtmltox_0.12.6-1.focal_amd64.deb"
+    dest: /home/odoo/downloads/wkhtmltox-0.12.1_linux-trusty-amd64.deb
+  when: ansible_architecture  != 'aarch64' and ansible_distribution_version == '20.04'
+  tags: wkhtmltox
+
+- name: Download wkhtmltopdf for Ubuntu 18.04
+  become: yes
+  become_user: odoo
+  get_url:
+    url: "http://nightly.odoo.com/deb/bionic/wkhtmltox_0.12.1.3-1~bionic_amd64.deb"
+    dest: /home/odoo/downloads/wkhtmltox_0.12.1.3-1~bionic_amd64.deb
+  when: ansible_architecture != 'aarch64' and ansible_distribution_version == '18.04'
+  tags: wkhtmltox
+
+- name: Install wkhtmltopdf
+  become: yes
+  shell:
+    creates: /usr/local/bin/wkhtmltopdf
+    cmd: |
+      yes | apt-get install /home/odoo/downloads/wkhtmltox*.deb || true
+      yes | apt-get install -f || true
+  when: ansible_architecture  != 'aarch64'
+  tags: wkhtmltox
+
+- name: Check if /usr/bin/node exists
+  stat: path=/usr/bin/node
+  register: node_var
+  tags: less
+
+- name: Symlink node -> nodejs
+  become: yes
+  file:
+    src: /usr/bin/nodejs
+    dest: /usr/bin/node
+    state: link
+  when: not node_var.stat.exists
+  tags: less
+
+- name: Install less
+  become: yes
+  shell:
+    cmd: npm install -g less
+    creates: /usr/local/bin/lessc
+  tags: less
+
+- name: Create log directory for odoo
+  become: yes
+  file:
+    path: /var/log/odoo
+    state: directory
+    owner: odoo
+    group: odoo
+  tags: directories
+
+- name: Copy logrotate odoo config
+  become: yes
+  copy: src=odoo_logrotate dest=/etc/logrotate.d/odoo
+  tags: logrotate
+
+- name: Set up postgres
+  become: yes
+  become_user: postgres
+  shell: |
+    if ! psql -c 'SELECT usename FROM pg_user;' | grep -o odoo > /dev/null ; then
+        createuser -d odoo
+        echo 'changed'
+    fi
+  register: postgres_setup_output
+  changed_when: 'postgres_setup_output.stdout == "changed"'
+  tags: postgres
+
+- name: Ensure 'odoo_run' alias is present in .bashrc
+  ansible.builtin.lineinfile:
+    path: /home/odoo/.bashrc
+    regexp: "^alias odoo_run="
+    line: "alias odoo_run='/home/odoo/python/bin/python3 /home/odoo/src/odoo/odoo-bin --addons-path={{ addons_path }} --db-filter={{ odoo_db }} -d {{ odoo_db }} -u {{ custom_module }}'"
+    state: present
+    create: yes
+  become: yes
+  become_user: odoo
+  tags: bashrc
+
+- name: Ensure 'odoo_debug' alias is present in .bashrc
+  ansible.builtin.lineinfile:
+    path: /home/odoo/.bashrc
+    regexp: "^alias odoo_debug="
+    line: "alias odoo_debug='/home/odoo/python/bin/python3 /home/odoo/src/odoo/odoo-bin --addons-path={{ addons_path }} --db-filter={{ odoo_db }} -d {{ odoo_db }} -u {{ custom_module }} --log-handler odoo:DEBUG'"
+    state: present
+    create: yes
+  become: yes
+  become_user: odoo
+  tags: bashrc
+
+- name: Copy odoorc
+  become: yes
+  become_user: odoo
+  template:
+    src: odoo_min.j2
+    dest: /home/odoo/.odoorc
+    force: no # don't overwrite with defaults, it might be manually tuned
+  when: (full | default(0)) != 1
+  tags: odoo
+
+- name: Copy odoorc
+  become: yes
+  become_user: odoo
+  template:
+    src: odoorc.j2
+    dest: /home/odoo/.odoorc
+    force: no # don't overwrite with defaults, it might be manually tuned
+  notify: restart odoo
+  when: (full | default(0)) == 1
+  tags: odoo
+
+- name: Ensure {{ odoo_postgres }} entry is present in /etc/cloud/templates/hosts.debian.tmpl
+  ansible.builtin.lineinfile:
+    path: /etc/cloud/templates/hosts.debian.tmpl
+    regexp: '^\d+\.\d+\.\d+\.\d+\s+postgres\.gfp'
+    line: "{{ odoo_postgres_ip }} {{ odoo_postgres }}"
+    state: present
+    create: yes
+  become: yes
+  tags: hosts
+
+- name: Ensure {{ odoo_postgres }} entry is present in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^\d+\.\d+\.\d+\.\d+\s+postgres\.gfp'
+    line: "{{ odoo_postgres_ip }} {{ odoo_postgres }}"
+    state: present
+    create: yes
+  become: yes
+  tags: hosts
+
+- name: Copy odoo service file
+  become: yes
+  copy: src=odoo.service dest=/etc/systemd/system/
+  notify:
+    - reload systemd
+    - restart odoo
+  when: (full | default(0)) == 1
+  tags: odoo
+
+- name: Start odoo after reboot
+  become: yes
+  service: name=odoo enabled=yes
+  when: (full | default(0)) == 1
+  tags: odoo
+
+- name: Copy iptables rules
+  become: yes
+  copy: src=iptables/{{ item }} dest=/root/
+  with_items:
+    - default.rules
+    - allow_all.rules
+    - drop_all.rules
+  notify:
+    - restart iptables
+    - restart ip6tables
+  tags: iptables
+
+- name: Copy iptables service file
+  become: yes
+  copy: src=iptables/iptables.service dest=/etc/systemd/system/
+  notify:
+    - reload systemd
+    - restart iptables
+  tags: iptables
+
+- name: Copy ip6tables service file
+  become: yes
+  copy: src=iptables/ip6tables.service dest=/etc/systemd/system/
+  notify:
+    - reload systemd
+    - restart ip6tables
+  tags: iptables
+
+- name: Remove dependencies that are no longer required
+  become: yes
+  apt:
+    autoremove: yes

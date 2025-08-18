@@ -1,0 +1,21 @@
+[options]
+addons_path = /home/odoo/src/enterprise,/home/odoo/src/odoo/addons
+db_name = {{ odoo_db }}
+dbfilter = {{ odoo_db }}
+longpolling_port = {{ odoo_longpolling_port }}
+http_port = {{ odoo_http_port }}
+workers = {{ odoo_workers }}
+limit_memory_soft = {{ odoo_soft_memory_in_bytes }}
+limit_memory_hard = {{ odoo_hard_memory_in_bytes }}
+limit_request = 8192
+limit_time_cpu = {{ 15 * 60 }}
+limit_time_real = {{ 20 * 60 }}
+limit_time_real_cron = -1
+list_db = False
+admin_passwd = {{ 2 | pow(32) | int | random | to_uuid }}
+log_level = info
+logfile = /var/log/odoo/odoo.log
+max_cron_threads = 1
+proxy_mode = True
+unaccent = False
+without_demo = all

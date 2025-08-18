@@ -1,0 +1,14 @@
+[Unit]
+Description=Packet Filtering Framework
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iptables-restore /root/default.rules
+ExecReload=/sbin/iptables-restore /root/default.rules
+ExecStop=/sbin/iptables-restore /root/allow_all.rules
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

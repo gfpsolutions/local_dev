@@ -1,0 +1,6 @@
+/var/log/odoo/*.log {
+    rotate 4
+    weekly
+    compress
+    missingok
+}
